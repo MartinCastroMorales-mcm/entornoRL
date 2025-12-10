@@ -122,14 +122,19 @@ class GameController:
     def start(self):
         args = [self.game_path, "-C"]
         if self.headless:
+            print("start headless")
             args.append("-V")
+        else:
+            print("do not start headless")
             
+        self.stderr_file = open("game_stderr.log", "w")
+
         print(f"Starting game: {' '.join(args)}")
         self.process = subprocess.Popen(
             args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=self.stderr_file,
             text=True,
             bufsize=0 # Unbuffered
         )
@@ -141,8 +146,8 @@ class GameController:
         Sends an action and waits for the specified number of frames.
         """
         mask = 0
-        print("action")
-        print(action)
+        #print("action")
+        #print(action)
         for i, bit in enumerate(action):
           if bit:
             mask |= (1 << i)

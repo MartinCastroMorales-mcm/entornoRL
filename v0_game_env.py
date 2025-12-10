@@ -77,7 +77,11 @@ class GameEnv(gym.Env):
 
   def __init__(self, render_mode=None):
     self.reset()
-    controller = GameController(headless=False)
+    self.renderMode = render_mode
+    if(self.renderMode):
+      controller = GameController(headless=False)
+    else:
+      controller = GameController(headless=True)
 
 
     controller.start()
@@ -105,6 +109,18 @@ class GameEnv(gym.Env):
 
   def step(self, action):
     reward = 0
+    if(action[7] == 1):
+      action[7] = 0
+    if(action[8] == 1):
+      action[8] = 0
+    if(action[GameEnv.Action.RIGHT] == 1 and action[GameEnv.Action.LEFT] == 1):
+      action[GameEnv.Action.RIGHT] = 0
+      action[GameEnv.Action.LEFT] = 0
+    if(action[GameEnv.Action.DOWN] == 1 and action[GameEnv.Action.UP] == 1):
+      action[GameEnv.Action.DOWN] = 0
+      action[GameEnv.Action.UP] = 0
+    if(action[GameEnv.Action.ENTER] == 1):
+      action[GameEnv.Action.ENTER] = 0
     return self.controller.step(action)
 
   def readInput(self):
@@ -157,47 +173,47 @@ def random_agent_process(controller):
      controller.step(gameEnv.keys_to_actions(0), frames=10)
 
 if __name__ == '__main__':
-  my_check_env()
+  #my_check_env()
   # 1. Navigate Menu
 
   gameEnv = GameEnv()
   controller = gameEnv.controller
-  print("Navigating Menu...")
+  #print("Navigating Menu...")
 
-  controller.step(gameEnv.keys_to_actions(Keys.ENTER), frames=10) # Open Menu
-  controller.step(gameEnv.keys_to_actions(0), frames=60)           # Wait 1s
-  controller.step(gameEnv.keys_to_actions(Keys.ENTER), frames=10) # Start Game
-  controller.step(gameEnv.keys_to_actions(0), frames=120)          # Wait 2s for game to load
-  print("Restarting ...")
+  #controller.step(gameEnv.keys_to_actions(Keys.ENTER), frames=10) # Open Menu
+  #controller.step(gameEnv.keys_to_actions(0), frames=60)           # Wait 1s
+  #controller.step(gameEnv.keys_to_actions(Keys.ENTER), frames=10) # Start Game
+  #controller.step(gameEnv.keys_to_actions(0), frames=120)          # Wait 2s for game to load
+  #print("Restarting ...")
         
-  # 2. Move Right for 1 second (60 frames)
-  # We send the command every 10 frames, so 6 steps
-  print("Moving Right...")
-  for _ in range(6):
-      controller.step(gameEnv.keys_to_actions(Keys.RIGHT), frames=10)
+  ## 2. Move Right for 1 second (60 frames)
+  ## We send the command every 10 frames, so 6 steps
+  #print("Moving Right...")
+  #for _ in range(6):
+      #controller.step(gameEnv.keys_to_actions(Keys.RIGHT), frames=10)
             
-  # 3. Stop for 0.5 second
-  print("Stopping...")
-  controller.step(gameEnv.keys_to_actions(0), frames=30)
+  ## 3. Stop for 0.5 second
+  #print("Stopping...")
+  #controller.step(gameEnv.keys_to_actions(0), frames=30)
         
-  # 4. Move Left for 1 second
-  print("Moving Left...")
-  for _ in range(6):
-      controller.step(gameEnv.keys_to_actions(Keys.LEFT), frames=10)
-            
-  # 5. Fire for 1 second
-  print("Firing...")
-  for _ in range(6):
-      controller.step(gameEnv.keys_to_actions(Keys.FIRE), frames=10)
-
+  ## 4. Move Left for 1 second
   #print("Moving Left...")
-  #for _ in range(1000):
-    #for _ in range(6):
-        #controller.step(gameEnv.keys_to_actions(Keys.LEFT), frames=10)
-    #for _ in range(6):
-        #controller.step(gameEnv.keys_to_actions(Keys.RIGHT), frames=10)
+  #for _ in range(6):
+      #controller.step(gameEnv.keys_to_actions(Keys.LEFT), frames=10)
+            
+  ## 5. Fire for 1 second
+  #print("Firing...")
+  #for _ in range(6):
+      #controller.step(gameEnv.keys_to_actions(Keys.FIRE), frames=10)
 
-  print("Test Complete.")
+  ##print("Moving Left...")
+  ##for _ in range(1000):
+    ##for _ in range(6):
+        ##controller.step(gameEnv.keys_to_actions(Keys.LEFT), frames=10)
+    ##for _ in range(6):
+        ##controller.step(gameEnv.keys_to_actions(Keys.RIGHT), frames=10)
+
+  #print("Test Complete.")
   random_agent_process(controller)
 
 
