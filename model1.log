@@ -1,0 +1,10 @@
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 20       |
+|    ep_rew_mean     | 1.03e+03 |
+| time/              |          |
+|    fps             | 2        |
+|    iterations      | 1        |
+|    time_elapsed    | 953      |
+|    total_timesteps | 2048     |
+---------------------------------
