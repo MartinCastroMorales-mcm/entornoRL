@@ -4,6 +4,9 @@ from gymnasium.utils.env_checker import check_env
 from gymnasium import spaces
 import numpy as np
 from stable_baselines3 import PPO
+from torch import nn
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+import torch as th
 
 from v0_game_hooks import GameController
 from utils import Utils
@@ -91,13 +94,38 @@ def my_check_env():
   env = gym.make("MyGame-v0", render_mode=None)
   check_env(env.unwrapped)
 
+class CustomFlatExtractor(BaseFeaturesExtractor):
+    def __init__(self, observation_space, features_dim=256):
+        super().__init__(observation_space, features_dim)
+        # Assuming observation is a flat vector of 768
+        self.net = nn.Sequential(
+            nn.Linear(observation_space.shape[0], 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, features_dim),
+            nn.ReLU()
+        )
 
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        return self.net(observations)
+    
 if __name__ == '__main__':
   #my_check_env()
+  policy_kwargs = dict(
+    features_extractor_class=CustomFlatExtractor,
+    features_extractor_kwargs=dict(features_dim=256)
+  )
   print("env run")
   gameEnv = GameEnv(render_mode=True)
   controller = gameEnv.controller 
-  model = PPO.load("models/model_0", env=gameEnv, device="cpu")
+  #model = PPO.load("models/model_0", env=gameEnv, device="cpu")
+  model = PPO.load("models/model_gpu/model_4", env=gameEnv, device="cpu", 
+    custom_objects={
+        "policy_kwargs": dict(
+            features_extractor_class=CustomFlatExtractor
+        )
+    })
 
   #Agents.random_agent_process(controller, gameEnv)
   Agents.ppo_trained_model(controller, gameEnv, model)

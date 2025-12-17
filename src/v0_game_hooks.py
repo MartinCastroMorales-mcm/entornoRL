@@ -1,94 +1,15 @@
 import subprocess
 import time
 import os
-from enum import IntEnum
-import threading
-import numpy as np
-
-#import game_controller_tcp as game_controller_tcp
-from game_controller_tcp import GameControllerTCPServer
-from my_types import Keys, State
-
-
-def test_control():
-    # Path to the game executable
-    game_path = "./nKaruga"
-    
-    # Start the game in headless mode with external control
-    # -V: Headless
-    # -C: External Control
-    print("Starting game process...")
-    process = subprocess.Popen(
-        [game_path, "-C"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=0 # Unbuffered
-    )
-    
-    try:
-        # Give it a moment to initialize
-        time.sleep(1)
-        
-        if process.poll() is not None:
-            print("Game process exited prematurely.")
-            stdout, stderr = process.communicate()
-            print("STDOUT:", stdout)
-            print("STDERR:", stderr)
-            return
-
-        print("Game process running. Sending inputs...")
-        
-        # Send some inputs
-        # 16 is bit 4 (Fire key)
-        inputs = [
-            0,
-            Keys.ENTER, 
-            0, 
-            0, 
-            0, 
-            Keys.ENTER, 
-            0,
-            0,
-            0,
-            Keys.FIRE, 
-            Keys.PAUSE, 
-            0, 
-            0,
-            0,
-            Keys.PAUSE, 
-            Keys.FIRE
-        ]
-        
-        for i in inputs:
-            print(f"Sending input: {i} ({i.name if isinstance(i, Keys) else 'WAIT'})")
-            process.stdin.write(f"{int(i)}\n")
-            process.stdin.flush()
-            time.sleep(0.5)
-            
-            if process.poll() is not None:
-                print("Game crashed or exited.")
-                break
-        
-        print("Test finished. Terminating process.")
-        process.terminate()
-        process.wait()
-        print("Process terminated.")
-        
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        if process.poll() is None:
-            process.terminate()
-
-if __name__ == "__main__":
-    test_control()
-
-import subprocess
-import time
-import os
 from queue import Queue
 from threading import Event
+import threading
+
+import numpy as np
+
+from game_controller_tcp import GameControllerTCPServer
+from my_types import State
+#from v0_game_controller_tcp import GameControllerTCPServer
 
 
 class GameController:
@@ -98,11 +19,13 @@ class GameController:
         self.inbound_queue = Queue()
         self.step_allowed = Event()
 
-        self.server = GameControllerTCPServer(self.inbound_queue, 
+        self.server = GameControllerTCPServer(self.inbound_queue,
                                               self.step_allowed)
 
         thread = threading.Thread(target=self.server.start, daemon=True)
         thread.start()
+
+        self.server.ready.wait()
 
         self.game_path = game_path
         self.headless = headless
@@ -110,14 +33,25 @@ class GameController:
         #self.frame_duration = 1.0 / 60.0
 
     def start(self):
-        args = [self.game_path, "-C"]
+        port = self.server.server.getsockname()[1]
+        args = [self.game_path, f"-C -P {port}"]
         if self.headless:
             print("start headless")
             args.append("-V")
+            args.append("-S")
+            #args.append("-U")
         else:
             print("do not start headless")
-            
+
         self.stderr_file = open("game_stderr.log", "w")
+
+        my_env = os.environ.copy()
+        # Prepend /bundle/lib to LD_LIBRARY_PATH. Use ':' to separate paths.
+        # Ensure existing LD_LIBRARY_PATH is included if it exists.
+        #if 'LD_LIBRARY_PATH' in my_env:
+        #    my_env['LD_LIBRARY_PATH'] = '/content/bundle/lib:' + my_env['LD_LIBRARY_PATH']
+        #else:
+        #    my_env['LD_LIBRARY_PATH'] = '/content/bundle/lib'
 
         print(f"Starting game: {' '.join(args)}")
         self.process = subprocess.Popen(
@@ -126,12 +60,12 @@ class GameController:
             stdout=subprocess.PIPE,
             stderr=self.stderr_file,
             text=True,
-            bufsize=0 # Unbuffered
+            bufsize=0, # Unbuffered
         )
         # Give it a moment to initialize
         print("game process started")
         time.sleep(2.0)
-    
+
     def reset(self):
         print("Resetting game...")
         # Terminate existing process if running
@@ -143,11 +77,11 @@ class GameController:
                 print("Force killing game process")
                 self.process.kill()
                 self.process.wait()
-    
+
         # Close previous stderr file if open
         if hasattr(self, "stderr_file") and not self.stderr_file.closed:
             self.stderr_file.close()
-    
+
         # Start a fresh game process
         self.start()
 
@@ -167,23 +101,44 @@ class GameController:
             exit(1)
 
         try:
+            msg = None
+            obs = None
             # Send the action
             self.process.stdin.write(f"{int(mask)}\n")
             self.process.stdin.flush()
+
+            #print("msg")
+            #log("log")
+            #if self.inbound_queue.empty():
+            #    print("inbound queue empty")
+            #    #print(self.server.currentState)
+            #    #self.step_allowed.wait()
+            #    msg = np.zeros(768, dtype=np.float32) 
+            #    msg[State.LIVES] = 4
+            #    self.step_allowed.set()
+            #    #print(msg)
+            #    obs = msg
+            #else:
             
             msg = self.inbound_queue.get()
-            self.step_allowed.set()      
+            self.step_allowed.set()
+            
+            print("inbound queue")
+            self.step_allowed.set()
+            #print("controller step set")
             obs = np.fromstring(msg, sep=",", dtype=np.float32)
+            #print(f"obs: {obs}")
             #obs fix
             state = obs[:State.CHAIN_COLOR]      # frame .. chain_color
             enemy_bullet_data = obs[State.ENEMIES:]     # e_0_x .. end
-
             obs = np.concatenate((state, enemy_bullet_data))
 
             return obs
-            
+
         except BrokenPipeError:
             print("Game process closed unexpectedly.")
+            raise BrokenPipeError
+            
 
     def close(self):
         if self.process:

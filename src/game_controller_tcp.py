@@ -1,22 +1,19 @@
 import socket
 import threading
-import time
 from queue import Queue
 from threading import Event
-
-
+from enum import StrEnum
 
 class GameControllerTCPServer:
 
   #_instance = None
 
-  HEADER = 64
-  PORT = 5050
-  SERVER_IP = "127.0.0.1"
-  ADDRESS = (SERVER_IP, PORT)
-  FORMAT = "utf-8"
-  DISCONNECT_MESSAGE = "!DISCONNECT"
+  class ServerState(StrEnum):
+    INITIAL = "INITIAL"
+    LISTENING = "LISTENING"
+    CONNECTED = "CONNECTED"
 
+  
   #def __new__(cls):
     ##this singleton stuff does not seem to work
     #print("__new__")
@@ -25,23 +22,37 @@ class GameControllerTCPServer:
     #return cls._instance
 
   def __init__(self, inbound_queue: Queue, step_allowed: Event):
+    self.HEADER = 64
+    self.PORT = 0
+    self.SERVER_IP = "127.0.0.1"
+    self.ADDRESS = (self.SERVER_IP, self.PORT)
+    self.FORMAT = "utf-8"
+    self.DISCONNECT_MESSAGE = "!DISCONNECT"
+
+    self.currentState = self.ServerState.INITIAL
     #if getattr(self, "_initialized", False):
       #return
 
+    self.ready = Event()
     self.inbound_queue = inbound_queue
     self.step_allowed = step_allowed
     #self._initialization = True
 
-    print("create server tcp init")
-    self.host = self.PORT
-    self.port = self.SERVER_IP
+
+
+    print("create server init")
+
     #AF_INET = ipv4
     #SOCK_STREAM = TCP
     self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
       self.server.bind(self.ADDRESS)
+      print(f"server binding succesfull to {self.ADDRESS}")
     except:
       print("Error binding to port")
+      raise RuntimeError(f"Failed to bind to {self.ADDRESS}")
+
+      
     # dictionario IP -> [] : cliente
     self.client_messages = {}
     self.first_addr = None
@@ -49,46 +60,54 @@ class GameControllerTCPServer:
 
   def start(self):
     self.server.listen()
+    self.ready.set()
     print(f"[Listening] Server is listening on {self.SERVER_IP}")
+    self.currentState = self.ServerState.LISTENING
+    print("SERVER STATE -> LISTENING")
+    print("BOUND TO:", self.server.getsockname())
     while True:
+      print("CALLING accept()")
       conn, addr = self.server.accept()
+      print("ACCEPTED:", addr)
       if not self.first_addr:
         self.first_addr = addr
       self.client_messages[addr] = []
+      print("addr" + str(addr))
+      #print(self.ADDRESS)
+      print("create handle_client thread")
       thread = threading.Thread(target=self.handle_client, args=(conn, addr))
       thread.start()
       print(f"[ACTIV CONNECTIONS] {threading.active_count() - 1}")
-  
+
   def handle_client(self, conn, addr):
-    print(f"[NEW CONNECTION] {addr} connected")
+    print(f"[NEW CONNECTION, in handle_client] {addr} connected")
+    print("this is handle_client")
 
     connected = True
+    self.currentState = self.ServerState.CONNECTED
 
     while connected:
       try:
+        print("waiting for message length", flush=True)
         msg_length = conn.recv(self.HEADER).decode(self.FORMAT)
         if(msg_length):
           msg_length = int(msg_length)
+          #print("waiting for message")
           msg = conn.recv(msg_length).decode(self.FORMAT)
+          #print("msg received")
           if(msg == self.DISCONNECT_MESSAGE):
+            print("disconected")
             connected = False
           self.client_messages[addr].append(msg)
-          #print(f"[{addr}] {msg}")
 
           self.inbound_queue.put(msg)
-
+          print("handle client, wait")
           self.step_allowed.wait()
           self.step_allowed.clear()
-          ##send the message to the environment
-          #with shared_state.lock: #mutex
-            #shared_state.action_ready.set()
-          #shared_state.action_ready.wait()
-
-          ##wait for the environment to process the action
-          #shared_state.step_ready.wait()
-          #shared_state.step_ready.clear()
+          print("handle client, clear")
 
           conn.sendall("STEP".encode(self.FORMAT))
+          #print("step")
       except Exception as e:
         print("Game close closing thread")
         break
@@ -104,13 +123,7 @@ class GameControllerTCPServer:
 
   def close(self):
       self.client.close()
-
-
-def start_server():
-  TCPServer = GameControllerTCPServer()
-  print("Server is starting")
-  TCPServer.start()
   
 
-if __name__ == "__main__":
-  start_server()
+#if __name__ == "__main__":
+  #start_server()

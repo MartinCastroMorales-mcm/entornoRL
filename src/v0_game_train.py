@@ -4,6 +4,13 @@ from stable_baselines3 import PPO
 
 import os
 
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+
+def make_env():
+    return GameEnv()
+
+
 def train():
   model_dir = "models"
   log_dir = "logs"
@@ -11,11 +18,12 @@ def train():
   os.makedirs(model_dir, exist_ok=True)
   os.makedirs(log_dir, exist_ok=True)
 
-  env = gym.make("MyGame-v0", render_mode=None)
+  num_envs = 4  # for example
+  envs = DummyVecEnv([make_env for _ in range(num_envs)])
   #MlpPolicy define una arquitectura de red capas densas,
-  #Tambien se puede ocupar CnnPolicy para una con capas 
+  #Tambien se puede ocupar CnnPolicy para una con capas
   #convolucionales, especialmente para imagenes
-  model = PPO("MlpPolicy", env, verbose=1, device="cpu", tensorboard_log=log_dir)
+  model = PPO("MlpPolicy", envs, verbose=1, device="cuda", tensorboard_log=log_dir)
   #model.learn(total_timesteps=100000)
 
   TIMESTEPS = 1
