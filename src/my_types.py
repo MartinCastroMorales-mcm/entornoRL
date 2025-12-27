@@ -1,6 +1,7 @@
 from typing import NamedTuple, Dict, Any
 from enum import IntEnum
 import numpy as np
+from torch import nn
 
 
 class StepResult(NamedTuple):
@@ -52,3 +53,24 @@ class State(IntEnum):
 
   ENEMIES    = 18 
   BULLETS    = 179
+
+NEURONAS_ENTRANTES = 768
+
+NETWORK_INPUT_VERSION = 1
+
+
+class NeuralNetwork(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.flatten = nn.Flatten()
+    self.linear_relu_stack = nn.Sequential(
+        nn.Linear(NEURONAS_ENTRANTES, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 6)
+    )
+  def forward(self, x):
+        x = self.flatten(x)
+        logits = self.linear_relu_stack(x)
+        return logits

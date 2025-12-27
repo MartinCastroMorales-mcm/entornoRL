@@ -8,7 +8,7 @@ import threading
 import numpy as np
 
 from game_controller_tcp import GameControllerTCPServer
-from my_types import State
+from my_types import NETWORK_INPUT_VERSION, State
 #from v0_game_controller_tcp import GameControllerTCPServer
 
 
@@ -46,12 +46,6 @@ class GameController:
         self.stderr_file = open("game_stderr.log", "w")
 
         my_env = os.environ.copy()
-        # Prepend /bundle/lib to LD_LIBRARY_PATH. Use ':' to separate paths.
-        # Ensure existing LD_LIBRARY_PATH is included if it exists.
-        #if 'LD_LIBRARY_PATH' in my_env:
-        #    my_env['LD_LIBRARY_PATH'] = '/content/bundle/lib:' + my_env['LD_LIBRARY_PATH']
-        #else:
-        #    my_env['LD_LIBRARY_PATH'] = '/content/bundle/lib'
 
         print(f"Starting game: {' '.join(args)}")
         self.process = subprocess.Popen(
@@ -129,8 +123,11 @@ class GameController:
             obs = np.fromstring(msg, sep=",", dtype=np.float32)
             #print(f"obs: {obs}")
             #obs fix
-            state = obs[:State.CHAIN_COLOR]      # frame .. chain_color
-            enemy_bullet_data = obs[State.ENEMIES:]     # e_0_x .. end
+            if(NETWORK_INPUT_VERSION == 1):
+                state = obs[:State.CHAIN_COLOR]      
+            else:
+                state = obs[:State.CHAIN_COLOR+1]      
+            enemy_bullet_data = obs[State.ENEMIES:]     
             obs = np.concatenate((state, enemy_bullet_data))
 
             return obs

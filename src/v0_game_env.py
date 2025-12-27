@@ -10,7 +10,7 @@ import torch as th
 
 from v0_game_hooks import GameController
 from utils import Utils
-from my_types import StepResult, State, Action
+from my_types import NeuralNetwork, StepResult, State, Action, NEURONAS_ENTRANTES
 from agents import Agents
 
 register(
@@ -44,7 +44,7 @@ class GameEnv(gym.Env):
     self.observation_space = spaces.Box(
     low=-np.inf,
     high=np.inf,
-    shape=(768,),
+    shape=(NEURONAS_ENTRANTES,),
     dtype=np.float32
     )
   
@@ -53,7 +53,7 @@ class GameEnv(gym.Env):
     super().reset(seed=seed)
     # initialize value - i think i dont have these
     self.current_step = 0
-    state = np.zeros(768, dtype=np.float32)  # example
+    state = np.zeros(NEURONAS_ENTRANTES, dtype=np.float32)  # example
 
     return state, {}
 
@@ -94,40 +94,129 @@ def my_check_env():
   env = gym.make("MyGame-v0", render_mode=None)
   check_env(env.unwrapped)
 
-class CustomFlatExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space, features_dim=256):
-        super().__init__(observation_space, features_dim)
-        # Assuming observation is a flat vector of 768
-        self.net = nn.Sequential(
-            nn.Linear(observation_space.shape[0], 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, features_dim),
-            nn.ReLU()
-        )
+def transfer_weights(bc_model, ppo):
+  with th.no_grad():
 
-    def forward(self, observations: th.Tensor) -> th.Tensor:
-        return self.net(observations)
-    
+      # BC layers
+      bc_layers = list(bc_model.linear_relu_stack)
+
+      # PPO actor layers
+      ppo_policy_net = ppo.policy.mlp_extractor.policy_net
+      ppo_action_net = ppo.policy.action_net
+
+      # Copy hidden layers
+      ppo_policy_net[0].weight.data.copy_(bc_layers[0].weight.data)
+      ppo_policy_net[0].bias.data.copy_(bc_layers[0].bias.data)
+
+      ppo_policy_net[2].weight.data.copy_(bc_layers[2].weight.data)
+      ppo_policy_net[2].bias.data.copy_(bc_layers[2].bias.data)
+
+      # Copy output layer
+      # Copy only the first 6 actions
+      ppo_action_net.weight[:6].copy_(bc_layers[4].weight)
+      ppo_action_net.bias[:6].copy_(bc_layers[4].bias)
+
+      # Copy only the first 6 actions
+      ppo_action_net.weight[:6].copy_(bc_layers[4].weight)
+      ppo_action_net.bias[:6].copy_(bc_layers[4].bias)
+
+      # Initialize remaining 4 actions safely
+      ppo_action_net.weight[6:].zero_()
+      ppo_action_net.bias[6:].zero_()
+  
+
 if __name__ == '__main__':
   #my_check_env()
-  policy_kwargs = dict(
-    features_extractor_class=CustomFlatExtractor,
-    features_extractor_kwargs=dict(features_dim=256)
-  )
-  print("env run")
+  print("Seleccione un modelo")
+  print("1: Random")
+  print("2: BC")
+  print("3: BC con transferencia de pesos a PPO")
+  print("4: PPO simple")
+  print("5: PPO simple")
+  print("6: PPO 10 000")
+  print("7: PPO 10 000 + bc")
+  input = input()
+
   gameEnv = GameEnv(render_mode=True)
   controller = gameEnv.controller 
+  match input:
+    case "1":
+      print("random")
+      Agents.random_agent_process(controller, gameEnv)
+    #case "1":
+      #print("PPO")
+      #model = PPO.load("models/model_0", env=gameEnv, device="cpu")
+    case "2":
+      print("BC")
+      state_dict = th.load("models/model.pth", map_location="cpu")
+      bc_model = NeuralNetwork()
+      bc_model.load_state_dict(state_dict)
+      Agents.bc_trained_model(controller, gameEnv, bc_model)
+    case "3":
+      print("BC con transferencia de pesos a PPO")
+      policy_kwargs = dict(
+        #Se usa la misma arquitectura que en el entrenamiento de pytorch
+        net_arch=[512, 512],
+        activation_fn=nn.ReLU
+      )
+      # Se crea un algoritmo de PPO con la arquitectura de la 
+      # red de pytorch
+      ppo = PPO(
+          policy="MlpPolicy",
+          env=gameEnv,
+          policy_kwargs=policy_kwargs,
+          device="cpu"
+      )
+      state_dict = th.load("models/model.pth", map_location="cpu")
+      bc_model = NeuralNetwork()
+      bc_model.load_state_dict(state_dict)
+      transfer_weights(bc_model, ppo)
+      # Initialize remaining 4 actions safely
+      ppo_action_net = ppo.policy.action_net
+      bc_layers = list(bc_model.linear_relu_stack)
+      ppo_action_net.weight[6:].zero_()
+      ppo_action_net.bias[6:].zero_()
+      ppo_action_net.weight.data.copy_(bc_layers[4].weight.data)
+      ppo_action_net.bias.data.copy_(bc_layers[4].bias.data)
+      Agents.ppo_trained_model(controller, gameEnv, ppo)
+    case "4":
+      print("PPO simple 4")
+      model = PPO.load("models/model_0", env=gameEnv, device="cpu")
+      Agents.ppo_trained_model(controller, gameEnv, model)
+    case "5":
+      print("PPO simple 5")
+      model = PPO.load("models/model_gpu/model_4", env=gameEnv, device="cpu")
+      Agents.ppo_trained_model(controller, gameEnv, model)
+    case _:
+      print("Invalid option")
+      exit(1)
+
+
+  #policy_kwargs = dict(
+    #features_extractor_class=CustomFlatExtractor,
+    #features_extractor_kwargs=dict(features_dim=256)
+  #)
+  #print("env run")
   #model = PPO.load("models/model_0", env=gameEnv, device="cpu")
-  model = PPO.load("models/model_gpu/model_4", env=gameEnv, device="cpu", 
-    custom_objects={
-        "policy_kwargs": dict(
-            features_extractor_class=CustomFlatExtractor
-        )
-    })
+  #model = PPO.load("models/model_gpu/model_4", env=gameEnv, device="cpu", 
+    #custom_objects={
+        #"policy_kwargs": dict(
+            #features_extractor_class=CustomFlatExtractor
+        #)
+    #})
+
+
+
+
+
+  #transfer_weights(bc_model, ppo)
+
+  # copy weights from bc_model to ppo
+  
+  
 
   #Agents.random_agent_process(controller, gameEnv)
-  Agents.ppo_trained_model(controller, gameEnv, model)
+  #Agents.ppo_trained_model(controller, gameEnv, ppo)
+  #Agents.bc_trained_model(controller, gameEnv, bc_model)
 
 
