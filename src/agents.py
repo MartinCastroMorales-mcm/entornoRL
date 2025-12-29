@@ -61,9 +61,12 @@ class Agents:
       with th.no_grad():
         logits = model(obs_tensor)  # (1, n_actions)
         probs = th.sigmoid(logits)
+        print(f"logits: {logits}")
+        #action = th.bernoulli(probs).int().numpy()[0]
         action = (probs > 0.5).int().squeeze(0).cpu().numpy()
         print(f"action: {action}")
       
+      b = action
       if(len(action) == 6):
         b = np.zeros(10, dtype=np.float32)
         b[:len(action)] = action
@@ -85,6 +88,8 @@ class Agents:
       action = Agents.torch_policy_step(model, obs)
       action = Utils.remove_invalid_actions(action)
       obs = controller.step(action)
+      print("obs")
+      print(obs)
 
       terminated = obs[State.LIVES] == 0
       if terminated:

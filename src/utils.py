@@ -1,7 +1,19 @@
 from my_types import Action, Keys
+import joblib
+import torch as th
+import zipfile
 
+scaler = joblib.load('scaler.pkl')
 
 class Utils:
+
+
+# Before predicting:
+  def normalize_observation(obs):
+    # obs is a numpy array of shape (1, 778) #tabla
+    obs_reshaped = obs.reshape(1, -1) 
+    #normaliza
+    return scaler.transform(obs_reshaped)[0] #[0] para que sea (778,)
   #static
   def remove_invalid_actions(action):
     if(action[7] == 1):
@@ -45,3 +57,10 @@ class Utils:
         actions[Action.ENTER] = 1
 
     return actions
+
+
+  def load_zip(zip_path, env):
+    with zipfile.ZipFile("models/model_20_000_steps.zip", "r") as archive:
+        with archive.open("policy.pth") as weights_file:
+            state_dict = th.load(weights_file, map_location="cpu")
+    return state_dict

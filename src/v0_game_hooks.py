@@ -8,7 +8,8 @@ import threading
 import numpy as np
 
 from game_controller_tcp import GameControllerTCPServer
-from my_types import NETWORK_INPUT_VERSION, State
+from my_types import  NetworkVars, State
+from utils import Utils
 #from v0_game_controller_tcp import GameControllerTCPServer
 
 
@@ -123,7 +124,14 @@ class GameController:
             obs = np.fromstring(msg, sep=",", dtype=np.float32)
             #print(f"obs: {obs}")
             #obs fix
-            if(NETWORK_INPUT_VERSION == 1):
+
+            if True:
+                print(len(obs))
+                #assert len(obs) == NetworkVars.NEURONAS_ENTRANTES 
+                obs = Utils.normalize_observation(obs)
+                #assert len(obs) == NetworkVars.DATOS_ENTRANTES
+
+            if(NetworkVars.NETWORK_INPUT_VERSION == 1):
                 state = obs[:State.CHAIN_COLOR]      
             else:
                 state = obs[:State.CHAIN_COLOR+1]      

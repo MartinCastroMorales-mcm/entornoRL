@@ -6,12 +6,16 @@ import numpy as np
 from stable_baselines3 import PPO
 from torch import nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+import stable_baselines3 as sb3
 import torch as th
 
 from v0_game_hooks import GameController
 from utils import Utils
-from my_types import NeuralNetwork, StepResult, State, Action, NEURONAS_ENTRANTES
+from my_types import CustomFlatExtractor, CustomFlatExtractor2, NetworkVars, NeuralNetwork, PPOActorNet, StepResult, State, \
+Action
 from agents import Agents
+import zipfile
+import io
 
 register(
   id='MyGame-v0',
@@ -44,7 +48,7 @@ class GameEnv(gym.Env):
     self.observation_space = spaces.Box(
     low=-np.inf,
     high=np.inf,
-    shape=(NEURONAS_ENTRANTES,),
+    shape=(NetworkVars.NEURONAS_ENTRANTES,),
     dtype=np.float32
     )
   
@@ -53,7 +57,7 @@ class GameEnv(gym.Env):
     super().reset(seed=seed)
     # initialize value - i think i dont have these
     self.current_step = 0
-    state = np.zeros(NEURONAS_ENTRANTES, dtype=np.float32)  # example
+    state = np.zeros(NetworkVars.NEURONAS_ENTRANTES, dtype=np.float32)  # example
 
     return state, {}
 
@@ -66,9 +70,6 @@ class GameEnv(gym.Env):
 
     # get reward and state
     obs = self.controller.step(action)
-
-    # #TODO - send action to the server thread 
-
 
     # terminate if lives = 0
     reward = obs[State.REWARD]
@@ -130,72 +131,116 @@ if __name__ == '__main__':
   print("Seleccione un modelo")
   print("1: Random")
   print("2: BC")
-  print("3: BC con transferencia de pesos a PPO")
-  print("4: PPO simple")
-  print("5: PPO simple")
-  print("6: PPO 10 000")
-  print("7: PPO 10 000 + bc")
+  #print("3: BC con transferencia de pesos a PPO")
+  print("3: PPO simple")
+  print("4: PPO 20 000")
+  print("5: PPO 50 000")
   input = input()
 
-  gameEnv = GameEnv(render_mode=True)
-  controller = gameEnv.controller 
   match input:
     case "1":
+      gameEnv = GameEnv(render_mode=True)
+      controller = gameEnv.controller 
       print("random")
       Agents.random_agent_process(controller, gameEnv)
     #case "1":
       #print("PPO")
       #model = PPO.load("models/model_0", env=gameEnv, device="cpu")
     case "2":
+      gameEnv = GameEnv(render_mode=True)
+      controller = gameEnv.controller 
       print("BC")
       state_dict = th.load("models/model.pth", map_location="cpu")
       bc_model = NeuralNetwork()
       bc_model.load_state_dict(state_dict)
       Agents.bc_trained_model(controller, gameEnv, bc_model)
+    #case "3":
+      #gameEnv = GameEnv(render_mode=True)
+      #controller = gameEnv.controller 
+      #print("BC con transferencia de pesos a PPO")
+      #policy_kwargs = dict(
+        ##Se usa la misma arquitectura que en el entrenamiento de pytorch
+        #net_arch=[512, 512],
+        #activation_fn=nn.ReLU
+      #)
+      ## Se crea un algoritmo de PPO con la arquitectura de la 
+      ## red de pytorch
+      #ppo = PPO(
+          #policy="MlpPolicy",
+          #env=gameEnv,
+          #policy_kwargs=policy_kwargs,
+          #device="cpu"
+      #)
+      #state_dict = th.load("models/model.pth", map_location="cpu")
+      #bc_model = NeuralNetwork()
+      #bc_model.load_state_dict(state_dict)
+      #transfer_weights(bc_model, ppo)
+      ## Initialize remaining 4 actions safely
+      #ppo_action_net = ppo.policy.action_net
+      #bc_layers = list(bc_model.linear_relu_stack)
+      #ppo_action_net.weight[6:].zero_()
+      #ppo_action_net.bias[6:].zero_()
+      #ppo_action_net.weight.data.copy_(bc_layers[4].weight.data)
+      #ppo_action_net.bias.data.copy_(bc_layers[4].bias.data)
+      #Agents.ppo_trained_model(controller, gameEnv, ppo)
     case "3":
-      print("BC con transferencia de pesos a PPO")
-      policy_kwargs = dict(
-        #Se usa la misma arquitectura que en el entrenamiento de pytorch
-        net_arch=[512, 512],
-        activation_fn=nn.ReLU
-      )
-      # Se crea un algoritmo de PPO con la arquitectura de la 
-      # red de pytorch
-      ppo = PPO(
-          policy="MlpPolicy",
-          env=gameEnv,
-          policy_kwargs=policy_kwargs,
-          device="cpu"
-      )
-      state_dict = th.load("models/model.pth", map_location="cpu")
-      bc_model = NeuralNetwork()
-      bc_model.load_state_dict(state_dict)
-      transfer_weights(bc_model, ppo)
-      # Initialize remaining 4 actions safely
-      ppo_action_net = ppo.policy.action_net
-      bc_layers = list(bc_model.linear_relu_stack)
-      ppo_action_net.weight[6:].zero_()
-      ppo_action_net.bias[6:].zero_()
-      ppo_action_net.weight.data.copy_(bc_layers[4].weight.data)
-      ppo_action_net.bias.data.copy_(bc_layers[4].bias.data)
-      Agents.ppo_trained_model(controller, gameEnv, ppo)
-    case "4":
+      gameEnv = GameEnv(render_mode=True)
+      controller = gameEnv.controller 
       print("PPO simple 4")
       model = PPO.load("models/model_0", env=gameEnv, device="cpu")
       Agents.ppo_trained_model(controller, gameEnv, model)
-    case "5":
-      print("PPO simple 5")
-      model = PPO.load("models/model_gpu/model_4", env=gameEnv, device="cpu")
+    case "4":
+      print("PPO 10 000 + bc")
+      NetworkVars.set_network_input_version(1)
+      gameEnv = GameEnv(render_mode=True)
+      controller = gameEnv.controller 
+      #Stable baselines actor
+      policy_kwargs = dict(
+        features_extractor_class=CustomFlatExtractor,
+        features_extractor_kwargs=dict(features_dim=256)
+      )
+      model = PPO(
+        policy="MlpPolicy",          # same as training
+        env=gameEnv,               # only used to define spaces
+        policy_kwargs=policy_kwargs, # same as training
+        device="cpu"
+      )
+      with zipfile.ZipFile("models/model_20_000_steps.zip", "r") as archive:
+          with archive.open("policy.pth") as weights_file:
+              state_dict = th.load(weights_file, map_location="cpu")
+
+      model.policy.load_state_dict(state_dict)
+
       Agents.ppo_trained_model(controller, gameEnv, model)
+    case "5":
+      #NetworkVars.set_network_input_version(1)
+      gameEnv = GameEnv(render_mode=True)
+      controller = gameEnv.controller 
+      print("PPO 50 000")
+      policy_kwargs = dict(
+        features_extractor_class=CustomFlatExtractor,
+        features_extractor_kwargs=dict(features_dim=256)
+      )
+      model = PPO(
+        policy="MlpPolicy",          # same as training
+        env=gameEnv,               # only used to define spaces
+        policy_kwargs=policy_kwargs, # same as training
+        device="cpu"
+      )
+      with zipfile.ZipFile("models/model_50_000.zip", "r") as archive:
+          with archive.open("policy.pth") as weights_file:
+              state_dict = th.load(weights_file, map_location="cpu")
+
+      model.policy.load_state_dict(state_dict)
+
+      Agents.ppo_trained_model(controller, gameEnv, model)
+
     case _:
       print("Invalid option")
       exit(1)
 
 
-  #policy_kwargs = dict(
-    #features_extractor_class=CustomFlatExtractor,
-    #features_extractor_kwargs=dict(features_dim=256)
-  #)
+  
   #print("env run")
   #model = PPO.load("models/model_0", env=gameEnv, device="cpu")
   #model = PPO.load("models/model_gpu/model_4", env=gameEnv, device="cpu", 
